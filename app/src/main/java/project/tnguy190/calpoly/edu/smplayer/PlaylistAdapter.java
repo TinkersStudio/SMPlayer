@@ -1,5 +1,6 @@
 package project.tnguy190.calpoly.edu.smplayer;
 
+import android.app.Activity;
 import android.support.v7.widget.RecyclerView;
 import android.view.LayoutInflater;
 import android.view.ViewGroup;
@@ -12,12 +13,16 @@ import java.util.ArrayList;
 
 public class PlaylistAdapter extends RecyclerView.Adapter<PlaylistItemViewHolder> {
     private ArrayList<Playlist> plList;
+    private Activity activity;
 
-    public PlaylistAdapter(ArrayList<Playlist> plList) { this.plList = plList; }
+    public PlaylistAdapter(Activity activity, ArrayList<Playlist> plList) {
+        this.plList = plList;
+        this.activity = activity;
+    }
 
     @Override
     public PlaylistItemViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
-        return new PlaylistItemViewHolder(
+        return new PlaylistItemViewHolder( activity,
                 LayoutInflater.from(parent.getContext()).inflate(R.layout.playlist_single_view, parent, false));
     }
 

@@ -12,4 +12,9 @@
     <string name="create_playlist">Create</string>
     <string name="select_songs">Select Songs for Playlist</string>
     <string name="make_new_playlist">Enter playlist name</string>
+    <string name="popup_edit_playlist">Edit Playlist</string>
+    <string name="popup_delete">Delete</string>
+    <string name="delete_confirmation">Are you sure?</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
 </resources>

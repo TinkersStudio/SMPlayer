@@ -2,25 +2,33 @@ package project.tnguy190.calpoly.edu.smplayer;
 
 import android.Manifest;
 import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
+import android.content.ContentResolver;
+import android.content.ContentUris;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
-import android.media.MediaPlayer;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
 import android.support.design.widget.NavigationView;
 import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.LocalBroadcastManager;
 import android.support.v4.view.GravityCompat;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v7.app.ActionBarDrawerToggle;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
-import android.os.Handler;
+import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.EditText;
@@ -28,12 +36,9 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
-import android.net.Uri;
-import android.content.ContentUris;
-import android.content.ContentResolver;
-import android.graphics.Bitmap;
+
 import java.io.InputStream;
-import android.graphics.BitmapFactory;
+
 import project.tnguy190.calpoly.edu.smplayer.MusicService.MusicBinder;
 
 /**
@@ -47,6 +52,9 @@ public class MainActivity extends AppCompatActivity
         implements NavigationView.OnNavigationItemSelectedListener {
 
     private static final String TAG = "MainActivity";
+    private static final String LAST_PLAYED_SONG_POSN = "LastSongPosition";
+    private static final String LAST_PLAYLIST = "LastPlaylistPlayed";
+    private static final String LAST_PLAYED_SONG_DURATION = "LastSongDuration";
 
     /* Intent use for binding service */
     private Intent playIntent;
@@ -56,7 +64,12 @@ public class MainActivity extends AppCompatActivity
 
     /* An instance of the MusicService so that
        this Activity can share control with the service */
-    private MusicService musicSrv;
+    static MusicService musicSrv;
+    private ImageView play;
+    private TextView  title;
+    private TextView artist;
+    private ImageView artWork;
+    static int flag = 0;
 
     /* Handler to update UI timer, progress bar etc,. */
     private Handler mHandler = new Handler();
@@ -68,6 +81,9 @@ public class MainActivity extends AppCompatActivity
     private TextView songTotalDurationLabel;
     private TextView songCurrentDurationLabel;
     private Thread updateSeekBar;
+
+    private BroadcastReceiver receiver;
+    static int totalDuration;
 
     /**
      * Initialize the welcome view of the Activity which is the Player screen
@@ -97,26 +113,64 @@ public class MainActivity extends AppCompatActivity
 
         setupPlaybackButtonListener();
         setupSeekBar();
+
+        if (savedInstanceState != null) {
+            musicSrv.setSongPosn(savedInstanceState.getInt(LAST_PLAYED_SONG_POSN));
+            musicSrv.setCurrList(savedInstanceState.getInt(LAST_PLAYLIST));
+            musicSrv.setCurrentPosition(savedInstanceState.getLong(LAST_PLAYED_SONG_DURATION));
+        }
+
+        receiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String s = intent.getStringExtra(MusicService.COPA_MESSAGE);
+                try {
+                    if(!musicSrv.getSongArtist().toString().equals("<unknown>")) {
+                        title.setText(musicSrv.getSongTitle());
+                        Log.d(TAG, "set artist");
+                        artist.setText(musicSrv.getSongArtist());
+                    }
+                    setAlbumArtWork(artWork);
+                }
+                catch (Exception e) {
+                    Log.i(TAG," UI not up yet");
+                }
+            }
+        };
     }
     private void setupPlaybackButtonListener(){
-        final ImageView play = (ImageView) findViewById(R.id.play);
+        play = (ImageView) findViewById(R.id.play);
+        //final ImageView play = (ImageView) findViewById(R.id.play);
         final ImageView next = (ImageView) findViewById(R.id.play_next);
         final ImageView prev = (ImageView) findViewById(R.id.play_prev);
         final ImageView repeat = (ImageView) findViewById(R.id.repeat);
         final ImageView shuffle = (ImageView) findViewById(R.id.shuffle);
-        final TextView  title = (TextView)  findViewById(R.id.songBeingPlay);
-        final ImageView artWork = (ImageView) findViewById(R.id.album_art);
+        //final TextView  title = (TextView)  findViewById(R.id.songBeingPlay);
+        artWork = (ImageView) findViewById(R.id.album_art);
+        title= (TextView)  findViewById(R.id.songBeingPlay);
+        artist = (TextView) findViewById(R.id.songBeingPlayArtist);
+
+        title.setSelected(true);
+        artist.setSelected(true);
 
         play.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 Log.i(TAG, "-------click Play/Pause");
                 if(musicSrv.isPaused())
-                    play.setImageResource(R.drawable.ic_play);
-                else
                     play.setImageResource(R.drawable.ic_pause);
+                else
+                    play.setImageResource(R.drawable.ic_play);
                 musicSrv.playSong();
-                title.setText(musicSrv.getSongTitle() + "\n" + musicSrv.getSongArtist());
+                //title.setText(musicSrv.getSongTitle() + "\n" + musicSrv.getSongArtist());
+                title.setSelected(true);
+                artist.setSelected(true);
+
+                title.setText(musicSrv.getSongTitle());
+                if(!musicSrv.getSongArtist().toString().equals("<unknown>")) {
+                    Log.d(TAG, "set artist");
+                    artist.setText(musicSrv.getSongArtist());
+                }
                 setAlbumArtWork(artWork);
             }
         });
@@ -126,8 +180,18 @@ public class MainActivity extends AppCompatActivity
             public void onClick(View view) {
                 Log.i(TAG, "-------click Next");
                 musicSrv.playNext();
-                musicSrv.seek(0);
-                title.setText(musicSrv.getSongTitle() + "\n" + musicSrv.getSongArtist());
+                //musicSrv.seek(0);
+                musicSrv.setCurrentPosition(0);
+                //title.setText(musicSrv.getSongTitle() + "\n" + musicSrv.getSongArtist());
+                play.setImageResource(R.drawable.ic_pause);
+
+                title.setSelected(true);
+                artist.setSelected(true);
+                title.setText(musicSrv.getSongTitle());
+                if(!musicSrv.getSongArtist().toString().equals("<unknown>")) {
+//                    title.setText(musicSrv.getSongTitle());
+                    artist.setText(musicSrv.getSongArtist());
+                }
                 setAlbumArtWork(artWork);
             }
         });
@@ -136,8 +200,18 @@ public class MainActivity extends AppCompatActivity
             public void onClick(View view) {
                 Log.i(TAG, "-------click Prev");
                 musicSrv.playPrev();
-                musicSrv.seek(0);
-                title.setText(musicSrv.getSongTitle() + "\n" + musicSrv.getSongArtist());
+                //musicSrv.seek(0);
+                musicSrv.setCurrentPosition(0);
+                //title.setText(musicSrv.getSongTitle() + "\n" + musicSrv.getSongArtist());
+                play.setImageResource(R.drawable.ic_pause);
+
+                title.setSelected(true);
+                artist.setSelected(true);
+                title.setText(musicSrv.getSongTitle());
+                if(!musicSrv.getSongArtist().toString().equals("<unknown>")) {
+//                    title.setText(musicSrv.getSongTitle());
+                    artist.setText(musicSrv.getSongArtist());
+                }
                 setAlbumArtWork(artWork);
             }
         });
@@ -164,7 +238,7 @@ public class MainActivity extends AppCompatActivity
             }
         });
     }
-    private void setAlbumArtWork(ImageView artWork){
+    public void setAlbumArtWork(ImageView artWork){
         Uri sArtworkUri = Uri
                 .parse("content://media/external/audio/albumart");
         Bitmap bitmap = null;
@@ -173,12 +247,16 @@ public class MainActivity extends AppCompatActivity
             ContentResolver res = this.getContentResolver();
             InputStream in = res.openInputStream(albumArtUri);
             bitmap = BitmapFactory.decodeStream(in);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                artWork.setClipToOutline(true);
+            }
             artWork.setImageBitmap(bitmap);
         } catch (Exception exception) {
             //exception.printStackTrace();
             artWork.setImageResource(R.drawable.ic_default_album_art);
         }
     }
+
     private void setupSeekBar(){
         seekBar = (SeekBar) findViewById(R.id.seekbar);
         songCurrentDurationLabel = (TextView)findViewById(R.id.timeCompleted);
@@ -191,7 +269,6 @@ public class MainActivity extends AppCompatActivity
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
                 isMovingSeekBar = false;
-                Log.i("OnSeekBarChangeListener", "onStopTrackingTouch");
             }
 
             @Override
@@ -204,7 +281,6 @@ public class MainActivity extends AppCompatActivity
                 if (isMovingSeekBar) {
                     Log.i("OnSeekBarChangeListener", "onProgressChanged");
                     seekBarCursor = new Utilities();
-                    int totalDuration = musicSrv.getDur();
                     int currentPosition = seekBarCursor.progressToTimer(seekBar.getProgress(), totalDuration);
 
                     // forward or backward to certain seconds
@@ -213,6 +289,22 @@ public class MainActivity extends AppCompatActivity
             }
         });
     }
+
+    public void playHit(){
+        if(musicSrv.isPaused())
+            play.setImageResource(R.drawable.ic_pause);
+        else
+            play.setImageResource(R.drawable.ic_play);
+
+        title.setSelected(true);
+        artist.setSelected(true);
+        title.setText(musicSrv.getSongTitle());
+        if(!musicSrv.getSongArtist().toString().equals("<unknown>")) {
+            artist.setText(musicSrv.getSongArtist());
+        }
+        setAlbumArtWork(artWork);
+    }
+
 
     /**
      * Everytime we start this activity, bind it to the Service
@@ -232,6 +324,10 @@ public class MainActivity extends AppCompatActivity
 
             // Run the independent thread to update UI
             updateSeekBar.start();
+
+            LocalBroadcastManager.getInstance(this).registerReceiver((receiver),
+                    new IntentFilter(MusicService.COPA_RESULT)
+            );
         }
     }
 
@@ -253,6 +349,7 @@ public class MainActivity extends AppCompatActivity
 
     /**
      * Background independent Runnable thread to update the UI of seek bar
+     *
      * */
     private Runnable mUpdateTimeTask = new Runnable() {
         public void run() {
@@ -276,10 +373,51 @@ public class MainActivity extends AppCompatActivity
             catch (Exception e) {
                 //Exception thrown when Service haven't up yet
             }
-            // Running this thread after 100 milliseconds
+            // Running this thread after 1000 milliseconds
             mHandler.postDelayed(this, 1000);
         }
     };
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        Log.i(TAG, "----------------------  onResume");
+
+        if (musicSrv != null) {
+            Log.i(TAG, "----------------------  onResume - has MusicService");
+
+            title.setSelected(true);
+            artist.setSelected(true);
+            title.setText(musicSrv.getSongTitle()); /*+ "\n" + musicSrv.getSongArtist());*/
+            artist.setText(musicSrv.getSongArtist());
+            if (musicSrv.isPaused() ){
+                play.setImageResource(R.drawable.ic_play);
+            }
+            else {
+                play.setImageResource(R.drawable.ic_pause);
+            }
+        } else
+            Log.i(TAG, "----------------------  onResume - does not has MusicService");
+        if (flag == 1) {
+            Intent mIntent = getIntent();
+            Log.i(TAG, "PICKED A SONG```````````````````````````````````````````");
+            //musicSrv.playSong();
+            musicSrv.findSong(mIntent.getLongExtra("play", 0));
+            play.setImageResource(R.drawable.ic_pause);
+            getIntent().removeExtra("play");
+            flag = 0;
+
+            title.setSelected(true);
+            artist.setSelected(true);
+            title.setText(musicSrv.getSongTitle()); /*+ "\n" + musicSrv.getSongArtist());*/
+            artist.setText(musicSrv.getSongArtist());
+            setAlbumArtWork(artWork);
+
+        }
+
+    }
+
 
     @Override
     public void onBackPressed() {
@@ -304,32 +442,6 @@ public class MainActivity extends AppCompatActivity
             Log.d("MainActivity", "open all songs");
             Intent intent = new Intent(getApplicationContext(), AllSongsActivity.class);
             startActivity(intent);
-        } else if (id == R.id.nav_search) {
-            final EditText input = new EditText(MainActivity.this);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.MATCH_PARENT);
-            input.setLayoutParams(lp);
-
-            AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
-            builder.setCancelable(false);
-            builder.setView(input); // uncomment this line
-
-            builder.setMessage(R.string.search)
-                    .setPositiveButton(R.string.search_dialog_confirm, new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int id) {
-                            Log.d(TAG, "search" + input.getText());
-                            Intent intent = new Intent(getApplicationContext(), AllSongsActivity.class);
-                            intent.putExtra("search", String.valueOf(input.getText()));
-                            startActivity(intent);
-                        }
-                    })
-                    .setNegativeButton(R.string.search_dialog_cancel, new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int id) {
-                        }
-                    });
-
-            builder.show();
         }
 
         DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
@@ -376,5 +488,59 @@ public class MainActivity extends AppCompatActivity
         if (musicConnection != null) {
             unbindService(musicConnection);
         }
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle savedInstanceState) {
+        Log.d(TAG, "save the last song and playlist");
+        super.onSaveInstanceState(savedInstanceState);
+        musicSrv.saveCurrentPosition();
+        savedInstanceState.putInt(LAST_PLAYED_SONG_POSN, musicSrv.songPosn);
+        savedInstanceState.putInt(LAST_PLAYLIST, musicSrv.currlist);
+        savedInstanceState.putLong(LAST_PLAYED_SONG_DURATION, musicSrv.currentPosition);
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        // Inflate the menu; this adds items to the action bar if it is present.
+        getMenuInflater().inflate(R.menu.search, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        final EditText input = new EditText(MainActivity.this);
+        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.MATCH_PARENT);
+        input.setLayoutParams(lp1);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
+        builder.setCancelable(false);
+        builder.setView(input); // uncomment this line
+        builder.setMessage(R.string.search)
+                .setPositiveButton(R.string.search_dialog_confirm, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+                        Log.d("-onOptionsSelection", "search" + input.getText());
+                        Log.d(TAG, "asdkfhsakdfh");
+                        Intent intent = new Intent(getApplicationContext(), AllSongsActivity.class);
+                        intent.putExtra("search", String.valueOf(input.getText()));
+                        startActivity(intent);
+                    }
+                })
+                .setNegativeButton(R.string.search_dialog_cancel, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+                    }
+                });
+
+        builder.show();
+
+        return true;
+    }
+
+    @Override
+    protected void onStop() {
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver);
+        super.onStop();
     }
 }

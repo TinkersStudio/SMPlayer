@@ -1,8 +1,5 @@
 package project.tnguy190.calpoly.edu.smplayer;
 
-import android.app.AlertDialog;
-import android.content.ContentUris;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.database.Cursor;
 import android.media.AudioManager;
@@ -23,7 +20,6 @@ import android.text.TextWatcher;
 import android.util.Log;
 import android.view.MenuItem;
 import android.widget.EditText;
-import android.widget.LinearLayout;
 
 import java.util.ArrayList;
 
@@ -42,7 +38,9 @@ public class AllSongsActivity extends AppCompatActivity
     private EditText search;
     private SongAdapter adapter;
     private String info;
+    static ArrayList<Song> List;
 
+    static boolean playlistChosen = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -101,43 +99,56 @@ public class AllSongsActivity extends AppCompatActivity
     }
 
     public void getSongList() {
-        String selection = MediaStore.Audio.Media.IS_MUSIC + " != 0";
-        String[] projection = {
-                MediaStore.Audio.Media.TITLE,
-                MediaStore.Audio.Media.ARTIST,
-                MediaStore.Audio.Media.DATA,
-                MediaStore.Audio.Media.DISPLAY_NAME,
-                MediaStore.Audio.Media.DURATION,
-                MediaStore.Audio.Media._ID
-        };
-        final String sortOrder = MediaStore.Audio.AudioColumns.TITLE + " COLLATE LOCALIZED ASC";
+        Intent intent = getIntent();
 
-        Cursor cursor = null;
-        try {
-            Uri uri = android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
-            cursor = getContentResolver().query(uri, projection, selection, null, sortOrder);
-            if( cursor != null){
-                cursor.moveToFirst();
+        boolean isPlaylist = intent.getBooleanExtra(PlaylistsActivity.EXTRA_PLAYLIST_TOGGLE, false);
+        playlistChosen = false;
+        if (isPlaylist) {
+            Log.d(TAG, "should display playlist songs");
+            int playlistID = intent.getIntExtra(PlaylistsActivity.EXTRA_PLAYLIST_ID, -1);
+            MusicService.playlistNum = playlistID;
+            songList = PlaylistsActivity.plList.get(playlistID).getAllSongs();
+            playlistChosen = true;
+        }
+        else {
+            String selection = MediaStore.Audio.Media.IS_MUSIC + " != 0";
+            String[] projection = {
+                    MediaStore.Audio.Media.TITLE,
+                    MediaStore.Audio.Media.ARTIST,
+                    MediaStore.Audio.Media.DATA,
+                    MediaStore.Audio.Media.DISPLAY_NAME,
+                    MediaStore.Audio.Media.ALBUM_ID,
+                    MediaStore.Audio.Media._ID
+            };
+            final String sortOrder = MediaStore.Audio.AudioColumns.TITLE + " COLLATE LOCALIZED ASC";
 
-                while( !cursor.isAfterLast() ){
-                    String title = cursor.getString(0);
-                    String artist = cursor.getString(1);
-                    String path = cursor.getString(2);
+            Cursor cursor = null;
+            try {
+                Uri uri = android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
+                cursor = getContentResolver().query(uri, projection, selection, null, sortOrder);
+                if (cursor != null) {
+                    cursor.moveToFirst();
+
+                    while (!cursor.isAfterLast()) {
+                        String title = cursor.getString(0);
+                        String artist = cursor.getString(1);
+                        String path = cursor.getString(2);
 //                    String album  = cursor.getString(3);
-                    Long albumID = cursor.getLong(4);
-                    Long id = cursor.getLong(5);
+                        Long albumID = cursor.getLong(4);
+                        Long id = cursor.getLong(5);
 //                    String songDuration = cursor.getString(6);
-                    cursor.moveToNext();
-                    if(path != null && path.endsWith(".mp3")) {
-                        songList.add(new Song(id, title, artist,albumID));
+                        cursor.moveToNext();
+                        if (path != null && path.endsWith(".mp3")) {
+                            songList.add(new Song(id, title, artist, albumID));
+                        }
                     }
+                } // print to see list of mp3 files
+            } catch (Exception e) {
+                Log.e("TAG", e.toString());
+            } finally {
+                if (cursor != null) {
+                    cursor.close();
                 }
-            } // print to see list of mp3 files
-        } catch (Exception e) {
-            Log.e("TAG", e.toString());
-        }finally{
-            if( cursor != null){
-                cursor.close();
             }
         }
     }
@@ -154,30 +165,6 @@ public class AllSongsActivity extends AppCompatActivity
         } else if (id == R.id.nav_player) {
             Intent intent = new Intent(getApplicationContext(), MainActivity.class);
             startActivity(intent);
-        } else if (id == R.id.nav_search) {
-            final EditText input = new EditText(AllSongsActivity.this);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.MATCH_PARENT);
-            input.setLayoutParams(lp);
-
-            AlertDialog.Builder builder = new AlertDialog.Builder(AllSongsActivity.this);
-            builder.setCancelable(false);
-            builder.setView(input); // uncomment this line
-
-            builder.setMessage(R.string.search)
-                    .setPositiveButton(R.string.search_dialog_confirm, new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int id) {
-                            Log.d(TAG, "search for " + input.getText());
-                            search.setText(input.getText());
-                        }
-                    })
-                    .setNegativeButton(R.string.search_dialog_cancel, new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int id) {
-                        }
-                    });
-
-            builder.show();
         }
 
         DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
@@ -186,19 +173,19 @@ public class AllSongsActivity extends AppCompatActivity
     }
 
     public void search(String req){
-        ArrayList<Song> List = new ArrayList<Song>();
+        List = new ArrayList<Song>();
         if(req.length() == 0) {
             listRV.setAdapter(adapter);
         }
         else {
-
             for (int i=0; i < songList.size(); i++){
                 Song song = songList.get(i);
-                Log.i("TAG", song.getTitle());
                 if(song.getTitle().toLowerCase().contains(req.toLowerCase()) || song.getArtist().toLowerCase().contains(req.toLowerCase())) {
                     List.add(song);
                 }
             }
+
+
             SongAdapter adap = new SongAdapter(List);
             listRV.setAdapter(adap);
         }
@@ -208,30 +195,5 @@ public class AllSongsActivity extends AppCompatActivity
         player.setWakeMode(getApplicationContext(),
                 PowerManager.PARTIAL_WAKE_LOCK);
         player.setAudioStreamType(AudioManager.STREAM_MUSIC);
-//        player.setOnPreparedListener(this);
-//        player.setOnCompletionListener(this);
-//        player.setOnErrorListener(this);
-    }
-
-    public void playSong(int position) {
-        player.reset();
-
-        //get song
-        Song playSong = songList.get(position);
-        //get id
-        long currSong = playSong.getID();
-        //set uri
-        Uri trackUri = ContentUris.withAppendedId(
-                android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                currSong);
-
-        try{
-            player.setDataSource(getApplicationContext(), trackUri);
-        }
-        catch(Exception e){
-            Log.e("MUSIC SERVICE", "Error setting data source", e);
-        }
-
-        player.prepareAsync();
     }
 }

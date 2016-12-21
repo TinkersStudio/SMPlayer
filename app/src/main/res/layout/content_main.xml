@@ -16,15 +16,36 @@
     <TextView
         android:paddingTop="50dp"
         android:id="@+id/songBeingPlay"
-        android:layout_width="match_parent"
+        android:layout_width="fill_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
+        android:singleLine="true"
+        android:ellipsize="marquee"
+        android:marqueeRepeatLimit="marquee_forever"
+        android:scrollHorizontally="true"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:fontFamily="sans-serif-smallcaps"
         android:textSize="20dp"/>
+
+    <TextView
+        android:id="@+id/songBeingPlayArtist"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="sans-serif-smallcaps"
+        android:gravity="center"
+        android:singleLine="true"
+        android:ellipsize="marquee"
+        android:marqueeRepeatLimit="marquee_forever"
+        android:textSize="15dp"/>
+
     <ImageView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
+        android:layout_marginTop="20dp"
         android:scaleType="fitXY"
+        android:background="@drawable/round_corners"
         android:src="@drawable/ic_default_album_art"
         android:id="@+id/album_art"
         />
@@ -71,7 +92,8 @@
             android:layout_weight=".5"
             android:id="@+id/repeat"
             android:clickable="true"
-            android:src="@drawable/ic_repeat"/>
+            android:src="@drawable/ic_repeat"
+            android:background="@drawable/ripple"/>
 
         <ImageView
             android:layout_width="40dp"
@@ -79,7 +101,8 @@
             android:id="@+id/play_prev"
             android:clickable="true"
             android:paddingTop="13dp"
-            android:src="@drawable/ic_play_prev"/>
+            android:src="@drawable/ic_play_prev"
+            android:background="@drawable/ripple"/>
 
         <ImageView
             android:layout_width="55dp"
@@ -88,7 +111,8 @@
             android:src="@drawable/ic_play"
             android:clickable="true"
             android:paddingRight="5dp"
-            android:paddingLeft="5dp"/>
+            android:paddingLeft="5dp"
+            android:background="@drawable/ripple"/>
 
         <ImageView
             android:layout_width="40dp"
@@ -96,7 +120,8 @@
             android:id="@+id/play_next"
             android:paddingTop="13dp"
             android:clickable="true"
-            android:src="@drawable/ic_play_next"/>
+            android:src="@drawable/ic_play_next"
+            android:background="@drawable/ripple"/>
 
         <ImageView
 
@@ -106,7 +131,8 @@
             android:layout_weight=".5"
             android:id="@+id/shuffle"
             android:clickable="true"
-            android:src="@drawable/ic_shuffle_disabled"/>
+            android:src="@drawable/ic_shuffle_disabled"
+            android:background="@drawable/ripple"/>
 
     </LinearLayout>
 </LinearLayout>

@@ -1,13 +1,14 @@
 package project.tnguy190.calpoly.edu.smplayer;
 
 import android.app.Notification;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.ContentUris;
+import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
-import android.provider.MediaStore;
-import android.support.v4.app.NotificationCompat;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.AudioManager;
@@ -16,7 +17,11 @@ import android.net.Uri;
 import android.os.Binder;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.provider.MediaStore;
+import android.support.v4.app.NotificationCompat;
+import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
+
 import java.util.ArrayList;
 import java.util.Random;
 
@@ -40,20 +45,36 @@ public class MusicService extends Service implements MediaPlayer.OnPreparedListe
     private ArrayList<Song> songs;
 
     /* current position of the song on the playlist */
-    private int songPosn;
+    protected int songPosn;
 
     /* to bind with the MainActivity */
     private final IBinder musicBind = new MusicBinder();
 
+    //stuff for notifications
+    private NotificationManager notificationManager;
+    private int notificaitonId = 10231;
+    private PendingIntent ppreviousIntent;
+    private PendingIntent pplayIntent;
+    private PendingIntent pnextIntent;
+    private Bitmap icon;
+    private PendingIntent pendingIntent;
+
     private Utilities seekBarCursor;
-    private long currentPosition;
+    protected long currentPosition;
     private String songTitle= "";
     private String songArtist= "";
     private Long albumArt;
-    private boolean isPaused;
+    static boolean isPaused;
     private boolean shuffle = false;
     private boolean repeat = false;
     private Random rand;
+    static int playlistNum = -1;
+    static int state = -1; // playlist number, if -1 all songs
+    protected int currlist = -2; //
+
+    LocalBroadcastManager broadcaster = LocalBroadcastManager.getInstance(this);
+    static final public String COPA_RESULT = "com.controlj.copame.backend.COPAService.REQUEST_PROCESSED";
+    static final public String COPA_MESSAGE = "com.controlj.copame.backend.COPAService.COPA_MSG";
 
     /**
      * create a media player at the beginning of service
@@ -113,56 +134,105 @@ public class MusicService extends Service implements MediaPlayer.OnPreparedListe
         // when Service is just start, user haven't played music yet, starting player cause Error
         //          E/MediaPlayer: start called in state 1
         //          E/MediaPlayer: error (-38, 0)
-        player.start();
-        if(!isPaused) {
+        if(isPaused()) {
+            mediaPlayer.start();
+            mediaPlayer.pause();
+        }
+        else {
+            mediaPlayer.start();
             player.seekTo((int) currentPosition);
             Log.i(LOG_TAG, "Resume player");
         }
-        this.setNotificationBar();
-
-    }
-
-    private void setNotificationBar(){
         Intent notificationIntent = new Intent(this, MainActivity.class);
         notificationIntent.setAction(Constants.ACTION.MAIN_ACTION);
         notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, 0);
+        pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, 0);
 
         Intent previousIntent = new Intent(this, MusicService.class);
         previousIntent.setAction(Constants.ACTION.PREV_ACTION);
-        PendingIntent ppreviousIntent = PendingIntent.getService(this, 0, previousIntent, 0);
+        ppreviousIntent = PendingIntent.getService(this, 0, previousIntent, 0);
 
         Intent playIntent = new Intent(this, MusicService.class);
         playIntent.setAction(Constants.ACTION.PLAY_ACTION);
-        PendingIntent pplayIntent = PendingIntent.getService(this, 0, playIntent, 0);
+        pplayIntent = PendingIntent.getService(this, 0, playIntent, 0);
 
         Intent nextIntent = new Intent(this, MusicService.class);
         nextIntent.setAction(Constants.ACTION.NEXT_ACTION);
-        PendingIntent pnextIntent = PendingIntent.getService(this, 0, nextIntent, 0);
+        pnextIntent = PendingIntent.getService(this, 0, nextIntent, 0);
 
-        Bitmap icon = BitmapFactory.decodeResource(getResources(), android.R.drawable.ic_media_play);
-        notification = new NotificationCompat.Builder(this).setContentTitle(songTitle)
+        icon = BitmapFactory.decodeResource(getResources(), android.R.drawable.ic_media_play);
+        notificationManager = (NotificationManager) this.getSystemService(Context.NOTIFICATION_SERVICE);
+        if(isPaused()) {
+            setNotificationPlay();
+        }
+        else {
+            setNotificationPause();
+        }
+
+        startForeground(Constants.NOTIFICATION_ID.FOREGROUND_SERVICE, new Notification());
+
+        Log.i(LOG_TAG, "Done setting up foreground service");
+
+        Intent intent = new Intent(COPA_RESULT);
+        intent.putExtra(COPA_MESSAGE, "updateUI");
+        broadcaster.sendBroadcast(intent);
+    }
+
+
+    private void setNotificationPause(){
+        Log.e(LOG_TAG, "set to pause");
+        notification = new NotificationCompat.Builder(this)
+                .setContentTitle(songTitle)
                 .setTicker("Playing").setContentText(songArtist)
                 .setSmallIcon(android.R.drawable.ic_media_pause)
                 .setLargeIcon(Bitmap.createScaledBitmap(icon, 128, 128, false))
                 .setContentIntent(pendingIntent)
-                .setOngoing(true)
+                .setOngoing(false)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setDeleteIntent(createOnDismissedIntent(this, notificaitonId))
+                .addAction(android.R.drawable.ic_media_previous, "Previous", ppreviousIntent)
+                .addAction(android.R.drawable.ic_media_pause, "Pause", pplayIntent)
+                .addAction(android.R.drawable.ic_media_next, "Next", pnextIntent)
+                .build();
+        notificationManager.notify(notificaitonId, notification);
+    }
+
+    private void setNotificationPlay(){
+        Log.e(LOG_TAG, "set to play");
+        notification = new NotificationCompat.Builder(this)
+                .setContentTitle(songTitle)
+                .setTicker("Playing").setContentText(songArtist)
+                .setSmallIcon(android.R.drawable.ic_media_pause)
+                .setLargeIcon(Bitmap.createScaledBitmap(icon, 128, 128, false))
+                .setContentIntent(pendingIntent)
+                .setOngoing(false)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setDeleteIntent(createOnDismissedIntent(this, notificaitonId))
                 .addAction(android.R.drawable.ic_media_previous, "Previous", ppreviousIntent)
                 .addAction(android.R.drawable.ic_media_play, "Play", pplayIntent)
-                .addAction(android.R.drawable.ic_media_next, "Next", pnextIntent).build();
-
-        startForeground(Constants.NOTIFICATION_ID.FOREGROUND_SERVICE,
-                notification);
-
-        Log.i(LOG_TAG, "Done setting up foreground service");
+                .addAction(android.R.drawable.ic_media_next, "Next", pnextIntent)
+                .build();
+        notificationManager.notify(notificaitonId, notification);
     }
     /**
      * Actual retrieve the Uri and playing the song
      */
-    public void playSong(){
+    public void playSong() {
         Log.i(LOG_TAG, "playSong");
+        Log.e(LOG_TAG, "np" + state);
 
-        if(songs == null ) songs = getSongs();
+        if (currlist != state){
+            if(state == - 1) {
+                songs = getSongs();
+            }
+            else {
+                songs = PlaylistsActivity.plList.get(playlistNum).getAllSongs();
+            }
+            currlist = state;
+        }
+
         if (songs.size()==0) return;
 
         if (isPaused) {
@@ -189,23 +259,133 @@ public class MusicService extends Service implements MediaPlayer.OnPreparedListe
                 Log.e("MUSIC SERVICE", "Error setting data source", e);
             }
             player.prepareAsync();
+            setNotificationPause();
         }
         else {
             isPaused = true;
             currentPosition = player.getCurrentPosition();
             pausePlayer();
+            setNotificationPlay();
             Log.i(LOG_TAG,"set currentPosition");
+            Intent intent = new Intent(COPA_RESULT);
+            intent.putExtra(COPA_MESSAGE, "updateUI");
+            broadcaster.sendBroadcast(intent);
         }
     }
 
+    public void playSong(int pos) {
+        Log.e(LOG_TAG, "playSong from pos " + pos);
+        Log.e(LOG_TAG, "p" + state);
+
+        /*
+        if (state == Constants.NEED_TO_UPDATE_TO_DEFAULT){
+            songs = getSongs();
+            state = Constants.CURRENTLY_DEFAULT;
+        }
+        else if (state == Constants.NEED_TO_UPDATE_TO_A_PLAYLIST) {
+            songs = PlaylistsActivity.plList.get(playlistNum).getAllSongs();
+            state = Constants.CURRENTLY_A_PLAYLIST;
+        } */
+        if (currlist != state){
+            if(state == - 1) {
+                songs = getSongs();
+            }
+            else {
+                songs = PlaylistsActivity.plList.get(playlistNum).getAllSongs();
+            }
+            currlist = state;
+        }
+
+        isPaused = false;
+        player.reset();
+        songPosn = pos;
+        //get song
+        Song playSong = songs.get(pos);
+        songTitle=playSong.getTitle();
+        songArtist=playSong.getArtist();
+        albumArt=playSong.getAlbumArt();
+        //get id
+        long currSong = playSong.getID();
+        //set uri
+        Uri trackUri = ContentUris.withAppendedId(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                currSong);
+
+        try{
+            player.setDataSource(getApplicationContext(), trackUri);
+        }
+        catch(Exception e){
+            Log.e("MUSIC SERVICE", "Error setting data source", e);
+        }
+        player.prepareAsync();
+        Intent intent = new Intent(COPA_RESULT);
+        intent.putExtra(COPA_MESSAGE, "updateUI");
+        broadcaster.sendBroadcast(intent);
+
+        setNotificationPause();
+    }
+
+
+    public void findSong(long songId) {
+        if (currlist != state){
+            if(state == - 1) {
+                songs = getSongs();
+            }
+            else {
+                songs = PlaylistsActivity.plList.get(playlistNum).getAllSongs();
+            }
+            currlist = state;
+        }
+        int pos = 0;
+        while(pos < songs.size()) {
+            if (songs.get(pos).getID() == songId) {
+                Log.e("TAG", "found " + songs.get(pos).getTitle());
+                playSong(pos);
+            }
+            pos++;
+        }
+
+    }
     /**
      * Compute the previous song to play
      */
     public void playPrev(){
+        if (currlist != state){
+            if(state == - 1) {
+                songs = getSongs();
+            }
+            else {
+                songs = PlaylistsActivity.plList.get(playlistNum).getAllSongs();
+            }
+            currlist = state;
+            songPosn = 0;
+        }
         songPosn--;
         if(songPosn < 0) songPosn=songs.size()-1;
-        playSong();
-        playSong();
+        isPaused = false;
+        player.reset();
+        //get song
+        Song playSong = songs.get(songPosn);
+        songTitle=playSong.getTitle();
+        songArtist=playSong.getArtist();
+        albumArt=playSong.getAlbumArt();
+        //get id
+        long currSong = playSong.getID();
+        //set uri
+        Uri trackUri = ContentUris.withAppendedId(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                currSong);
+
+        try{
+            player.setDataSource(getApplicationContext(), trackUri);
+        }
+        catch(Exception e){
+            Log.e("MUSIC SERVICE", "Error setting data source", e);
+        }
+        player.prepareAsync();
+        Intent intent = new Intent(COPA_RESULT);
+        intent.putExtra(COPA_MESSAGE, "updateUI");
+        broadcaster.sendBroadcast(intent);
+
+        setNotificationPause();
     }
 
     /**
@@ -213,6 +393,8 @@ public class MusicService extends Service implements MediaPlayer.OnPreparedListe
      * Then play that song
      */
     public void playNext(){
+//        Log.d(TAG, "playnext");
+
         if (songs != null) {
             // repeat option is first priority when choosing next song
             if (repeat){}
@@ -229,8 +411,34 @@ public class MusicService extends Service implements MediaPlayer.OnPreparedListe
                 songPosn++;
                 if (songPosn >= songs.size()) songPosn = 0;
             }
-            playSong();
-            playSong();
+
+            if(songs == null || songs.size()==0)
+                songs = getSongs();
+            isPaused = false;
+            player.reset();
+            //get song
+            Song playSong = songs.get(songPosn);
+            songTitle=playSong.getTitle();
+            songArtist=playSong.getArtist();
+            albumArt   = playSong.getAlbumArt();
+            //get id
+            long currSong = playSong.getID();
+            //set uri
+            Uri trackUri = ContentUris.withAppendedId(
+                    android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                    currSong);
+            setNotificationPause();
+            try{
+                player.setDataSource(getApplicationContext(), trackUri);
+            }
+            catch(Exception e){
+                Log.e("MUSIC SERVICE", "Error setting data source", e);
+            }
+
+            player.prepareAsync();
+            Intent intent = new Intent(COPA_RESULT);
+            intent.putExtra(COPA_MESSAGE, "updateUI");
+            broadcaster.sendBroadcast(intent);
         }
     }
 
@@ -241,12 +449,14 @@ public class MusicService extends Service implements MediaPlayer.OnPreparedListe
     @Override
     public void onCompletion(MediaPlayer mp) {
         Log.i(LOG_TAG, "onCompletion");
-        //if(player.getCurrentPosition()>0){
         mp.reset();
-        if (!isPaused)
-            playNext();
-        this.setNotificationBar();
-        //}
+        currentPosition = 0;
+        //player.seekTo(0);
+        playNext();
+
+        Intent intent = new Intent(COPA_RESULT);
+        intent.putExtra(COPA_MESSAGE, "updateUI");
+        broadcaster.sendBroadcast(intent);
     }
 
     /**
@@ -265,27 +475,27 @@ public class MusicService extends Service implements MediaPlayer.OnPreparedListe
             this.onPrepared(player);
         } else if (intent.getAction().equals(Constants.ACTION.PREV_ACTION)) {
             Log.i(LOG_TAG, "Clicked Previous");
-            player.seekTo(0);
-            currentPosition = (long)0.0;
             // Call play prev
             this.playPrev();
+//            player.seekTo(0);
+            currentPosition = (long)0.0;
         } else if (intent.getAction().equals(Constants.ACTION.PLAY_ACTION)) {
             Log.i(LOG_TAG, "Clicked Play");
             // Call play
             this.playSong();
         } else if (intent.getAction().equals(Constants.ACTION.NEXT_ACTION)) {
             Log.i(LOG_TAG, "Clicked Next");
-            player.seekTo(0);
-            currentPosition = (long)0.0;
             // Call play next
             this.playNext();
+//            player.seekTo(0);
+            currentPosition = (long)0.0;
         } else if (intent.getAction().equals(
                 Constants.ACTION.STOPFOREGROUND_ACTION)) {
             Log.i(LOG_TAG, "Received Stop Foreground Intent");
             stopForeground(true);
             stopSelf();
         }
-        return START_STICKY;
+        return START_NOT_STICKY;
     }
 
     /** -----GET and SET methods to update Avticities UI------------ */
@@ -298,6 +508,10 @@ public class MusicService extends Service implements MediaPlayer.OnPreparedListe
     public boolean isRepeat() {return repeat;}
     public boolean isShuffle() {return shuffle;}
     public MediaPlayer getPlayer(){return player;}
+    public void setCurrentPosition(long currentPosition) {
+        this.currentPosition = currentPosition;
+    }
+
     public Long getAlbumArt() {return albumArt;}
 
     /**
@@ -325,7 +539,11 @@ public class MusicService extends Service implements MediaPlayer.OnPreparedListe
     @Override
     public void onDestroy() {
         Log.d("MUSICSERVICE", "onDestroy() called");
-        stopForeground(true);
+        //stopForeground(true);
+        player.stop();
+        player.reset();
+        player.release();
+        super.onDestroy();
     }
 
     /**
@@ -359,7 +577,7 @@ public class MusicService extends Service implements MediaPlayer.OnPreparedListe
                     String title = cursor.getString(0);
                     String artist = cursor.getString(1);
                     String path = cursor.getString(2);
-                    String album  = cursor.getString(3);
+                    String album = cursor.getString(3);
                     Long albumID = cursor.getLong(4);
                     Long id = cursor.getLong(5);
                     String songDuration = cursor.getString(6);
@@ -408,11 +626,46 @@ public class MusicService extends Service implements MediaPlayer.OnPreparedListe
     public void go(){
         player.start();
     }
+
+
+    public static class NotificationDismissedReceiver extends BroadcastReceiver {
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            int notificationId = intent.getExtras().getInt("com.my.app.notificationId");
+
+            if (notificationId == 10231) {
+//                stopForeground(false);
+                context.stopService(new Intent(context, MusicService.class));
+            }
+        }
+    }
+
+    private PendingIntent createOnDismissedIntent(Context context, int notificationId) {
+        Intent intent = new Intent(context, NotificationDismissedReceiver.class);
+        intent.putExtra("com.my.app.notificationId", notificationId);
+
+        PendingIntent pendingIntent =
+                PendingIntent.getBroadcast(context.getApplicationContext(),
+                        notificationId, intent, PendingIntent.FLAG_CANCEL_CURRENT);
+        return pendingIntent;
+    }
+
+    public void setCurrList(int i) {
+        currlist = i;
+    }
+
+    public void setSongPosn(int i ) {
+        songPosn = i;
+    }
+
+    public void saveCurrentPosition() {
+        currentPosition = player.getCurrentPosition();
+    }
     @Override
     public boolean onError(MediaPlayer mediaPlayer, int i, int i1) {
         mediaPlayer.reset();
         return false;
     }
-
 }
 

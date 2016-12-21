@@ -11,9 +11,9 @@ import java.util.ArrayList;
  */
 
 public class SongAdapter extends RecyclerView.Adapter<SongItemViewHolder> {
-    private ArrayList<Song> songList;
+    private static ArrayList<Song> songList;
 
-    public SongAdapter(/*Context c, */ArrayList<Song> songList) {
+    public SongAdapter(ArrayList<Song> songList) {
         this.songList = songList;
     }
 
@@ -21,6 +21,10 @@ public class SongAdapter extends RecyclerView.Adapter<SongItemViewHolder> {
     public SongItemViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
         return new SongItemViewHolder(
                 LayoutInflater.from(parent.getContext()).inflate(R.layout.song_entry, parent, false));
+    }
+
+    public static ArrayList<Song> songList() {
+        return songList;
     }
 
     @Override

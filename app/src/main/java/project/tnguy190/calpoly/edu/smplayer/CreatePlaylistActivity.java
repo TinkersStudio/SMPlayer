@@ -1,7 +1,5 @@
 package project.tnguy190.calpoly.edu.smplayer;
 
-import android.app.AlertDialog;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -20,7 +18,6 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.EditText;
-import android.widget.LinearLayout;
 
 import java.util.ArrayList;
 
@@ -31,8 +28,20 @@ import java.util.ArrayList;
 public class CreatePlaylistActivity extends AppCompatActivity
         implements NavigationView.OnNavigationItemSelectedListener {
     private static final String TAG = "CreatePlaylistActivity";
+    protected static final String EXTRA_SONG_IDS = "SongIDs";
+    protected static final String EXTRA_SONG_TITLES = "SongTitles";
+    protected static final String EXTRA_SONG_ARTISTS = "SongArtists";
+    protected static final String EXTRA_SONG_ALBUM_IDS = "SongAlbumIDs";
 
-    private ArrayList<Song> songList;
+    private static ArrayList<Song> playlist;
+    private static ArrayList<Song> songList;
+//    private static ArrayList<Song> alreadyInPlaylist;
+    private long songIDs[];
+    private String songTitles[];
+    private String songArtists[];
+    private long songAlbumIDs[];
+    private String playlistTitle;
+    private int playlistID;
     private RecyclerView listRV;
     private EditText search;
     private PlaylistSongAdapter adapter;
@@ -42,6 +51,11 @@ public class CreatePlaylistActivity extends AppCompatActivity
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_create_playlist);
+
+        Intent intent = getIntent();
+
+        playlistID = intent.getIntExtra(PlaylistsActivity.EXTRA_PLAYLIST_ID, -1);
+        playlistTitle = intent.getStringExtra(PlaylistsActivity.EXTRA_PLAYLIST_TITLE);
 
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
@@ -57,10 +71,12 @@ public class CreatePlaylistActivity extends AppCompatActivity
 
         listRV = (RecyclerView) findViewById(R.id.fragment_playlist_list);
         songList = new ArrayList<Song>();
+        playlist = new ArrayList<Song>();
 
         getSongList();
+        getPlaylistSongList();
 
-        adapter = new PlaylistSongAdapter(songList);
+        adapter = new PlaylistSongAdapter(songList, playlist);
         listRV.setAdapter(adapter);
 
         search = (EditText) findViewById(R.id.search_bar);
@@ -95,8 +111,33 @@ public class CreatePlaylistActivity extends AppCompatActivity
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        Log.d(TAG, "save playlist");
+        songIDs = new long[playlist.size()];
+        songTitles = new String[playlist.size()];
+        songArtists = new String[playlist.size()];
+        songAlbumIDs = new long[playlist.size()];
 
+        Song tmp;
+
+        Intent intent = new Intent();
+
+        for (int i = 0; i < playlist.size(); i++) {
+            tmp = playlist.get(i);
+            songIDs[i] = tmp.getID();
+            songArtists[i] = tmp.getArtist();
+            songTitles[i] = tmp.getTitle();
+            songAlbumIDs[i] = tmp.getAlbumArt();
+        }
+
+        intent.putExtra(EXTRA_SONG_IDS, songIDs);
+        intent.putExtra(EXTRA_SONG_ARTISTS, songArtists);
+        intent.putExtra(EXTRA_SONG_TITLES, songTitles);
+        intent.putExtra(EXTRA_SONG_ALBUM_IDS, songAlbumIDs);
+        intent.putExtra(PlaylistsActivity.EXTRA_PLAYLIST_ID, playlistID);
+
+        setResult(RESULT_OK, intent);
+        onBackPressed();
+
+        Utilities.writeToJSonFile(this, new Playlist(playlistID, playlistTitle, playlist));
         return true;
     }
 
@@ -116,29 +157,6 @@ public class CreatePlaylistActivity extends AppCompatActivity
         } else if (id == R.id.nav_player) {
             Intent intent = new Intent(getApplicationContext(), MainActivity.class);
             startActivity(intent);
-        } else if (id == R.id.nav_search) {
-            final EditText input = new EditText(CreatePlaylistActivity.this);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.MATCH_PARENT);
-            input.setLayoutParams(lp);
-
-            AlertDialog.Builder builder = new AlertDialog.Builder(CreatePlaylistActivity.this);
-            builder.setCancelable(false);
-            builder.setView(input); // uncomment this line
-
-            builder.setMessage(R.string.search)
-                    .setPositiveButton(R.string.search_dialog_confirm, new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int id) {
-                            Log.d(TAG, "search");
-                        }
-                    })
-                    .setNegativeButton(R.string.search_dialog_cancel, new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int id) {
-                        }
-                    });
-
-            builder.show();
         }
 
         DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
@@ -165,7 +183,7 @@ public class CreatePlaylistActivity extends AppCompatActivity
             if( cursor != null){
                 cursor.moveToFirst();
 
-                while( !cursor.isAfterLast() ){
+                while(!cursor.isAfterLast() ){
                     String title = cursor.getString(0);
                     String artist = cursor.getString(1);
                     String path = cursor.getString(2);
@@ -194,7 +212,6 @@ public class CreatePlaylistActivity extends AppCompatActivity
             listRV.setAdapter(adapter);
         }
         else {
-
             for (int i=0; i < songList.size(); i++){
                 Song song = songList.get(i);
                 Log.i("TAG", song.getTitle());
@@ -202,8 +219,26 @@ public class CreatePlaylistActivity extends AppCompatActivity
                     List.add(song);
                 }
             }
-            SongAdapter adap = new SongAdapter(List);
+            PlaylistSongAdapter adap = new PlaylistSongAdapter(List, playlist);
             listRV.setAdapter(adap);
         }
+    }
+
+    public static void addToPlaylist(int adapterPosition) {
+        Log.d(TAG, "addToPlaylist " + adapterPosition);
+
+        if (!playlist.contains(songList.get(adapterPosition)))
+            playlist.add(songList.get(adapterPosition));
+    }
+
+    public static void deleteFromPlaylist(int adapterPositon) {
+        playlist.remove(songList.get(adapterPositon));
+    }
+
+    private void getPlaylistSongList() {
+        Playlist pl = Utilities.deserializeJson(this, playlistTitle + ".json");
+        playlist = pl.getAllSongs();
+
+        Log.d(TAG, "number of songs already in playlist = " + pl.size());
     }
 }

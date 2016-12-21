@@ -15,7 +15,7 @@ import android.widget.TextView;
 public class SongItemViewHolder extends RecyclerView.ViewHolder implements View.OnClickListener {
     private static final String TAG = "SongItemViewHolder";
     private TextView titleTV;
-    private TextView artistTV;
+//    private TextView artistTV;
     private int position;
     public static Song song;
     private LinearLayout entry;
@@ -32,7 +32,7 @@ public class SongItemViewHolder extends RecyclerView.ViewHolder implements View.
 
         itemView.setOnClickListener(this);
         titleTV = (TextView) itemView.findViewById(R.id.song_title);
-        artistTV = (TextView) itemView.findViewById(R.id.song_artist);
+//        artistTV = (TextView) itemView.findViewById(R.id.song_artist);
 
         entry = (LinearLayout) itemView;
     }
@@ -41,16 +41,27 @@ public class SongItemViewHolder extends RecyclerView.ViewHolder implements View.
         this.song = song;
 
         this.position = pos;
-        titleTV.setText(song.getTitle());
-        artistTV.setText(song.getArtist());
+        titleTV.setText(song.getTitle() + " by " + song.getArtist());
+//        artistTV.setText(song.getArtist());
     }
 
     @Override
     public void onClick(View view) {
-        Log.d(TAG, "create intent to play song with id " + song.getID());
+        // Log.d(TAG, "create intent to play song with id " + song.getID());
 
         Intent intent = new Intent(context, MainActivity.class);
-        intent.putExtra("play", song.getID());
+        intent.putExtra("play", SongAdapter.songList().get(getAdapterPosition()).getID());
+        intent.putExtra("class", "picked");
+
+        MainActivity.flag = 1;
+        if(!AllSongsActivity.playlistChosen) {
+
+            musicService.state = -1;
+
+        }
+        else {
+            musicService.state = musicService.playlistNum;
+        }
         context.startActivity(intent);
     }
 }

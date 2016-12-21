@@ -16,8 +16,10 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.Toast;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 
 /**
  * Created by thuy on 11/22/16.
@@ -28,12 +30,16 @@ public class PlaylistsActivity extends AppCompatActivity
     private static final String TAG = "PlaylistsActivity";
     private static final int CREATE_PLAYLIST = 10;
     private static final String KEY = "PlaylistList";
+    protected static final String EXTRA_PLAYLIST_ID = "PlaylistID";
+    protected static final String EXTRA_PLAYLIST_TITLE = "PlaylistTitle";
+    protected static final String EXTRA_PLAYLIST_TOGGLE = "ToggleAllSongsToShowPlaylist";
+    protected static final boolean PLAYLIST_TOGGLE = true;
 
-    private ArrayList<Playlist> plList;
+    protected static ArrayList<Playlist> plList;
     private RecyclerView listRV;
-    private PlaylistAdapter adapter;
+    private static PlaylistAdapter adapter;
 
-    private static int idCount = 0;
+    protected static int idCount = 0;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -54,12 +60,9 @@ public class PlaylistsActivity extends AppCompatActivity
 
         listRV = (RecyclerView) findViewById(R.id.fragment_playlist_list);
 
-        if (savedInstanceState != null)
-            plList = savedInstanceState.getParcelableArrayList(KEY);
-        else
-            plList = new ArrayList<Playlist>();
+        getPlaylists();
 
-        adapter = new PlaylistAdapter(plList);
+        adapter = new PlaylistAdapter(this, plList);
         listRV.setAdapter(adapter);
     }
 
@@ -72,12 +75,8 @@ public class PlaylistsActivity extends AppCompatActivity
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
         int id = item.getItemId();
 
-        //noinspection SimplifiableIfStatement
         if (id == R.id.action_create_playlist) {
             // create a dialog asking for playlist name and add to playlist view
             final EditText input = new EditText(PlaylistsActivity.this);
@@ -99,6 +98,10 @@ public class PlaylistsActivity extends AppCompatActivity
                                 Log.d(TAG, "list size = " + plList.size());
                                 plList.add(pl);
                                 adapter.notifyDataSetChanged();
+
+                                Utilities.writeToJSonFile(PlaylistsActivity.this, pl);
+
+                                Toast.makeText(getApplicationContext(), "Empty playlist created", Toast.LENGTH_SHORT).show();
                             }
                         }
                     })
@@ -108,26 +111,7 @@ public class PlaylistsActivity extends AppCompatActivity
                     });
 
             builder.show();
-
-        }
-
-        return super.onOptionsItemSelected(item);
-    }
-
-    @Override
-    public boolean onNavigationItemSelected(MenuItem item) {
-        // Handle navigation view item clicks here.
-        int id = item.getItemId();
-        Log.d("MainActivity", "item clicked");
-
-        if (id == R.id.nav_all_songs) {
-            Log.d(TAG, "open all songs");
-            Intent intent = new Intent(getApplicationContext(), AllSongsActivity.class);
-            startActivity(intent);
-        } else if (id == R.id.nav_player) {
-            Intent intent = new Intent(getApplicationContext(), MainActivity.class);
-            startActivity(intent);
-        } else if (id == R.id.nav_search) {
+        } else if (id == R.id.action_search) {
             final EditText input = new EditText(PlaylistsActivity.this);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -155,17 +139,27 @@ public class PlaylistsActivity extends AppCompatActivity
             builder.show();
         }
 
-        DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
-        drawer.closeDrawer(GravityCompat.START);
-        return true;
+        return super.onOptionsItemSelected(item);
     }
 
     @Override
-    public void onSaveInstanceState(Bundle savedInstanceState) {
-        super.onSaveInstanceState(savedInstanceState);
+    public boolean onNavigationItemSelected(MenuItem item) {
+        // Handle navigation view item clicks here.
+        int id = item.getItemId();
+        Log.d("MainActivity", "item clicked");
 
-        Log.d(TAG, "onsaveinstanestate");
-        savedInstanceState.putParcelableArrayList(KEY, plList);
+        if (id == R.id.nav_all_songs) {
+            Log.d(TAG, "open all songs");
+            Intent intent = new Intent(getApplicationContext(), AllSongsActivity.class);
+            startActivity(intent);
+        } else if (id == R.id.nav_player) {
+            Intent intent = new Intent(getApplicationContext(), MainActivity.class);
+            startActivity(intent);
+        }
+
+        DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
+        drawer.closeDrawer(GravityCompat.START);
+        return true;
     }
 
     @Override
@@ -176,7 +170,37 @@ public class PlaylistsActivity extends AppCompatActivity
             return;
 
         if (requestCode == CREATE_PLAYLIST) {
-            // add songs to playlist
+            long ids[] = data.getLongArrayExtra(CreatePlaylistActivity.EXTRA_SONG_IDS);
+            String artists[] = data.getStringArrayExtra(CreatePlaylistActivity.EXTRA_SONG_ARTISTS);
+            String titles[] = data.getStringArrayExtra(CreatePlaylistActivity.EXTRA_SONG_TITLES);
+            int playlistID = data.getIntExtra(EXTRA_PLAYLIST_ID, -1);
+            long albumIDs[] = data.getLongArrayExtra(CreatePlaylistActivity.EXTRA_SONG_ALBUM_IDS);
+
+            plList.get(playlistID).clear();
+
+            for (int i = 0; i < ids.length; i++)
+                plList.get(playlistID).add(new Song(ids[i], titles[i], artists[i], albumIDs[i]));
+
+            adapter.notifyItemChanged(playlistID);
+        }
+    }
+
+    public static void deleteFromPlaylists(Playlist pl) {
+        plList.remove(pl);
+        adapter.notifyDataSetChanged();
+    }
+
+    public void getPlaylists() {
+        String filesArr[] = fileList();
+        String files = Arrays.toString(fileList());
+        plList = new ArrayList<Playlist>();
+
+        if (files.contains(".json")) {
+            for (int i = 0; i < filesArr.length; i++) {
+                if (filesArr[i].contains(".json")) {
+                    plList.add(Utilities.deserializeJson(this, filesArr[i]));
+                }
+            }
         }
     }
 }

@@ -5,6 +5,11 @@ package project.tnguy190.calpoly.edu.smplayer;
  */
 
 public class Constants {
+
+    public static int NEED_TO_UPDATE_TO_A_PLAYLIST = 2;
+    public static int CURRENTLY_A_PLAYLIST = 1;
+    public static int CURRENTLY_DEFAULT = -1;
+    public static int NEED_TO_UPDATE_TO_DEFAULT = -2;
     public interface ACTION {
         public static String MAIN_ACTION = "com.truiton.foregroundservice.action.main";
         public static String PREV_ACTION = "com.truiton.foregroundservice.action.prev";
